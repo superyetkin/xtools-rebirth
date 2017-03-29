@@ -2,6 +2,7 @@
 
 namespace AppBundle\Helper;
 
+use Doctrine\DBAL\Connection;
 use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -42,6 +43,15 @@ class LabsHelper
     }
 
     /**
+     * Is this a single-wiki installation of xTools?
+     * @return bool
+     */
+    public function isSingle()
+    {
+        return (bool)$this->container->getParameter('app.single_wiki');
+    }
+
+    /**
      * Set up LabsHelper::$client and return get the database name, wiki name, and URL of a given
      * project.
      * @todo: Handle failure better
@@ -50,7 +60,7 @@ class LabsHelper
      */
     public function databasePrepare($project = 'wiki')
     {
-        if ($this->container->getParameter('app.single_wiki')) {
+        if ($this->isSingle()) {
             $dbName = $this->container->getParameter('database_replica_name');
             $wikiName = 'wiki';
             $url = $this->container->getParameter('wiki_url');
@@ -100,6 +110,21 @@ class LabsHelper
         $this->url = $url;
 
         return [ 'dbName' => $dbName, 'wikiName' => $wikiName, 'url' => $url ];
+    }
+
+    /**
+     * Get a list of all projects.
+     * @return string[] Each item of the array has keys 'dbName', 'name', and 'url'.
+     */
+    public function allProjects()
+    {
+        /** @var Connection $client */
+        $client = $this->container->get('doctrine')->getManager('meta')->getConnection();
+        $wikiQuery = $client->createQueryBuilder();
+        $wikiQuery->select([ 'dbName', 'name', 'url' ])->from('wiki');
+        $stmt = $wikiQuery->execute();
+        $out = $stmt->fetchAll();
+        return $out;
     }
 
     /**

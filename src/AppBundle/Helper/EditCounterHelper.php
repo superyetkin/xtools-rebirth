@@ -62,9 +62,8 @@ class EditCounterHelper
     /**
      * Get revision counts for the given user.
      * @param integer $userId The user's ID.
-     * @returns string[] With keys: 'archived', 'total', 'first', 'last', '24h', '7d', '30d', and
-     * '365d'.
-     * @throws Exception
+     * @returns string[] With keys: 'archived', 'total', 'first', 'last', '24h', '7d', '30d', 
+     * '365d', 'small' (< 20 bytes), 'large' (> 1000 bytes), 'with_comments', and 'minor_edits'.
      */
     public function getRevisionCounts($userId)
     {
@@ -112,11 +111,6 @@ class EditCounterHelper
         $resultQuery->execute();
         $results = $resultQuery->fetchAll();
 
-        // Unknown user - This is a dirty hack that should be fixed.
-        if (count($results) < 8) {
-            throw new Exception("Unable to get all revision counts for user $userId");
-        }
-
         $revisionCounts = array_combine(
             array_map(function ($e) {
                 return $e['source'];
@@ -126,13 +120,17 @@ class EditCounterHelper
             }, $results)
         );
 
+        // Format the first and last dates.
+        $revisionCounts['first'] = isset($revisionCounts['first'])
+            ? date('Y-m-d H:i', strtotime($revisionCounts['first']))
+            : 0;
+        $revisionCounts['last'] = isset($revisionCounts['last'])
+            ? date('Y-m-d H:i', strtotime($revisionCounts['last']))
+            : 0;
+
         // Count the number of days, accounting for when there's only one edit.
         $editingTimeInSeconds = ceil($revisionCounts['last'] - $revisionCounts['first']);
         $revisionCounts['days'] = $editingTimeInSeconds ? $editingTimeInSeconds/(60*60*24) : 1;
-
-        // Format the first and last dates.
-        $revisionCounts['first'] = date('Y-m-d H:i', strtotime($revisionCounts['first']));
-        $revisionCounts['last'] = date('Y-m-d H:i', strtotime($revisionCounts['last']));
 
         // Sum deleted and live to make the total.
         $revisionCounts['total'] = $revisionCounts['deleted'] + $revisionCounts['live'];

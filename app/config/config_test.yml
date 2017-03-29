@@ -8,9 +8,41 @@ framework:
     profiler:
         collect: false
 
+parameters:
+    app.is_labs: 0
+
 web_profiler:
     toolbar: false
     intercept_redirects: false
 
 swiftmailer:
     disable_delivery: true
+
+doctrine:
+    dbal:
+        default_connection: meta
+        connections:
+            meta:
+                driver:   pdo_mysql
+                host:     "%database_host%"
+                port:     "%database_port%"
+                dbname:   xtools_meta
+                user:     "%database_user%"
+                password: "%database_password%"
+                charset:  UTF8
+            replicas:
+                driver:   pdo_mysql
+                host:     "%database_host%"
+                port:     "%database_port%"
+                dbname:   xtools_wiki1
+                user:     "%database_user%"
+                password: "%database_password%"
+                charset:  UTF8
+            toolsdb:
+                driver:   pdo_mysql
+                host:     "%database_host%"
+                port:     "%database_port%"
+                dbname:   xtools_toolsdb
+                user:     "%database_user%"
+                password: "%database_password%"
+                charset:  UTF8

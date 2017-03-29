@@ -48,6 +48,18 @@ And set the following in ``app/config/parameters.yml``:
 
 (Change the 'your-*-here' bits to your own values.)
 
+Installing MediaWiki to test against
+------------------------------------
+The ``xtools_utilities/`` directory contains some scripts
+to make it easy to run the integration tests against a locally-installed MediaWiki instance.
+These scripts are also used by Travis.
+
+To install MediaWiki into ``./build/mediawiki``, run::
+
+    $ MEDIAWIKI_VERSION="1.28.0" DBPASS="passw0rd" ./testing/install-mediawiki.sh
+
+Then launch the 
+
 Additional Help
 ---------------
 Please contact `User:Matthewrbowker <https://en.wikipedia.org/wiki/User:Matthewrbowker>`_ or `User:MusikAnimal <https://en.wikipedia.org/wiki/User:MusikAnimal>`_ if you need help.  Or, you are welcome to visit us on `IRC <https://webchat.freenode.net/?channels=#wikimedia-xtools>`_ (`Direct link <irc://irc.freenode.net/#wikimedia-xtools>`_ - Requires an IRC client).

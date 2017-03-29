@@ -17,6 +17,7 @@ class LabsHelperTest extends WebTestCase
 
     public function setUp()
     {
+        parent::setUp();
         $client = static::createClient();
         $this->container = $client->getContainer();
         $this->labsHelper = new LabsHelper($this->container);
@@ -33,5 +34,14 @@ class LabsHelperTest extends WebTestCase
             $this->assertEquals('page', $this->labsHelper->getTable('page'));
             $this->assertEquals('logging', $this->labsHelper->getTable('logging'));
         }
+    }
+
+    /**
+     * If this is not a single-wiki installation, then we should find a list of more than one 
+     * wiki in the meta database.
+     */
+    public function testAllProjects()
+    {
+        $this->assertGreaterThan(0, count($this->labsHelper->allProjects()));
     }
 }

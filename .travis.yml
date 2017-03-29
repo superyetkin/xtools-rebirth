@@ -1,6 +1,11 @@
 # see http://about.travis-ci.org/docs/user/languages/php/ for more hints
 language: php
 
+sudo: false
+
+services:
+  - mysql
+
 # list any PHP version you want to test against
 php:
   # using major version aliases
@@ -16,12 +21,25 @@ php:
 env:
   - IS_LABS=1
   - IS_LABS=0
+  - MEDIAWIKI_VERSION=1.28.0
+
+matrix:
+  # Only test both IS_LABS values on 5.5, because that's what Labs uses.
+  exclude:
+    - php: 5.6
+      env: IS_LABS=1
+    - php: 7.0
+      env: IS_LABS=1
 
 before_install:
   - pip install --user codecov
 
 install:
+  - xtools_utilities/install-mediawiki.sh
+  - php -S localhost:8081 -t build/mediawiki
   - composer install
+  - 'sed -i "s/database_user: .*/database_user: root/" app/config/parameters.yml'
+  - 'sed -i "s/database_password: .*/database_password: ~/" app/config/parameters.yml'
   - 'sed -i "s/apps.is_labs: .*/apps.is_labs: $IS_LABS/" app/config/parameters.yml'
 
 script:
@@ -31,12 +49,3 @@ script:
   - codecov
   - ./vendor/bin/phpcs -s .
 
-sudo: false
-
-matrix:
-  # Only test both IS_LABS values on 5.5, because that's what Labs uses.
-  exclude:
-    - php: 5.6
-      env: IS_LABS=1
-    - php: 7.0
-      env: IS_LABS=1
