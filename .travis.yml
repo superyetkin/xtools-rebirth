@@ -21,7 +21,6 @@ php:
 env:
   - IS_LABS=1
   - IS_LABS=0
-  - MEDIAWIKI_VERSION=1.28.0
 
 matrix:
   # Only test both IS_LABS values on 5.5, because that's what Labs uses.
@@ -30,6 +29,9 @@ matrix:
       env: IS_LABS=1
     - php: 7.0
       env: IS_LABS=1
+
+global:
+  - MEDIAWIKI_VERSION=1.28.0
 
 before_install:
   - pip install --user codecov
