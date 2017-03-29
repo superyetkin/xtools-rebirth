@@ -45,9 +45,8 @@ install:
   - php -S localhost:8081 -t build/mediawiki >/dev/null 2>&1 &
 
 script:
-  - cd "$TRAVIS_BUILD_DIR"
   - composer validate
-  - ./vendor/bin/parallel-lint --exclude vendor .
+  - ./vendor/bin/parallel-lint --exclude vendor --exclude build .
   - ./vendor/bin/phpunit --coverage-clover=coverage.xml
   - codecov
   - ./vendor/bin/phpcs -s .
