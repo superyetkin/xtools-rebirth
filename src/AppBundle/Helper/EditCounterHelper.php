@@ -62,7 +62,7 @@ class EditCounterHelper
     /**
      * Get revision counts for the given user.
      * @param integer $userId The user's ID.
-     * @returns string[] With keys: 'archived', 'total', 'first', 'last', '24h', '7d', '30d', 
+     * @returns string[] With keys: 'archived', 'total', 'first', 'last', '24h', '7d', '30d',
      * '365d', 'small' (< 20 bytes), 'large' (> 1000 bytes), 'with_comments', and 'minor_edits'.
      */
     public function getRevisionCounts($userId)

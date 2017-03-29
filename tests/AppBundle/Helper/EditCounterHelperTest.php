@@ -34,7 +34,7 @@ class EditCounterHelperTest extends WebTestCase
         $api->login(new ApiUser('admin', 'admin123'));
         $factory = new MediawikiFactory($api);
         $revisionSaver = $factory->newRevisionSaver();
-        for ( $i = 1; $i <= 5; $i++ ) {
+        for ($i = 1; $i <= 5; $i++) {
             $testCat = new PageIdentifier(new Title("Test page $i"));
             $content = new Content("Test page $i edited at ".date('Y-m-d H:i:s'));
             $revision = new Revision($content, $testCat, null, null, 'Admin');

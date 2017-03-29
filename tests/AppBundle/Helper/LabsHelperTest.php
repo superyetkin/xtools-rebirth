@@ -37,7 +37,7 @@ class LabsHelperTest extends WebTestCase
     }
 
     /**
-     * If this is not a single-wiki installation, then we should find a list of more than one 
+     * If this is not a single-wiki installation, then we should find a list of more than one
      * wiki in the meta database.
      */
     public function testAllProjects()
