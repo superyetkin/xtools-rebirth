@@ -38,7 +38,7 @@ before_install:
 
 install:
   - xtools_utilities/install-mediawiki.sh
-  - php -S localhost:8081 -t build/mediawiki
+  - php -S localhost:8081 -t build/mediawiki >/dev/null 2>&1 &
   - composer install
   - 'sed -i "s/database_user: .*/database_user: root/" app/config/parameters.yml'
   - 'sed -i "s/database_password: .*/database_password: ~/" app/config/parameters.yml'
