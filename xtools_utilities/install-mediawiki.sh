@@ -11,7 +11,7 @@ if [ -z $MEDIAWIKI_VERSION ]; then
 fi
 
 ## Set some paths.
-BUILDDIR=$(cd $(dirname "$0")"/../build"; pwd -P)
+BUILDDIR=$(cd $(dirname "$0"); pwd -P)"/../build"
 if [ ! -d $BUILDDIR ]; then
     mkdir "$BUILDDIR"
 fi
