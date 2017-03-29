@@ -51,5 +51,3 @@ $wgCacheDirectory = __DIR__."/images/tmp";
 $wgServer = "http://localhost:8081";
 $wgUsePathInfo = false;
 EOF
-
-cd "$TRAVIS_BUILD_DIR"
