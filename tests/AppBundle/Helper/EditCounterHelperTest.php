@@ -28,7 +28,15 @@ class EditCounterHelperTest extends WebTestCase
         $client = static::createClient();
         $this->container = $client->getContainer();
         $this->editCounterHelper = new EditCounterHelper($this->container);
+    }
 
+    public function testUserId()
+    {
+        $this->assertGreaterThan(0, $this->editCounterHelper->getUserId('Admin'));
+    }
+
+    public function testRevisionCounts()
+    {
         // Make Admin edit some pages.
         $api = MediawikiApi::newFromPage('http://localhost:8081');
         $api->login(new ApiUser('admin', 'admin123'));
@@ -40,15 +48,8 @@ class EditCounterHelperTest extends WebTestCase
             $revision = new Revision($content, $testCat, null, null, 'Admin');
             $revisionSaver->save($revision);
         }
-    }
 
-    public function testUserId()
-    {
-        $this->assertGreaterThan(0, $this->editCounterHelper->getUserId('Admin'));
-    }
-
-    public function testRevisionCounts()
-    {
+        // Test the revision counts.
         $userId = $this->editCounterHelper->getUserId('Admin');
         $revCounts = $this->editCounterHelper->getRevisionCounts($userId);
         $this->assertEquals(5, $revCounts['total']);

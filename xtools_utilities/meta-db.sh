@@ -1,5 +1,7 @@
 #!/bin/bash
-set -x
+##
+## This file is run by Travis when setting up the tests.
+##
 
 METADB="xtools_meta"
 echo "Creating database: $METADB"
