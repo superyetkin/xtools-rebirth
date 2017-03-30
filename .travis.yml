@@ -35,10 +35,10 @@ matrix:
 
 before_install:
   - pip install --user codecov
+  - xtools_utilities/meta-db.sh
+  - xtools_utilities/install-mediawiki.sh
 
 install:
-  - xtools_utilities/install-mediawiki.sh
-  - xtools_utilities/meta-db.sh
   - composer install
   - 'sed -i "s/database_user: .*/database_user: root/" app/config/parameters.yml'
   - 'sed -i "s/database_password: .*/database_password: ~/" app/config/parameters.yml'
