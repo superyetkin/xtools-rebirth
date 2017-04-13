@@ -65,3 +65,6 @@ parameters:
     # Caching.
     cache.adapter: filesystem
     cache.redis_dsn: redis://localhost
+
+    oauth_id:
+    oauth_secret:

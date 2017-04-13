@@ -152,3 +152,37 @@ fos_rest:
         view_response_listener: 'force'
         formats:
             json: true
+
+hwi_oauth:
+    # list of names of the firewalls in which this bundle is active, this setting MUST be set
+    firewall_names: [secured_area]
+
+    # an optional setting to configure a query string parameter which can be used to redirect
+    # the user after authentication, e.g. /connect/facebook?_destination=/my/destination will
+    # redirect the user to /my/destination after facebook authenticates them.  If this is not
+    # set then the user will be redirected to the original resource that they requested, or
+    # the base address if no resource was requested.  This is similar to the behaviour of
+    # [target_path_parameter for form login](http://symfony.com/doc/2.0/cookbook/security/form_login.html).
+    # target_path_parameter: _destination
+
+    # an optional setting to use the HTTP REFERER header to be used in case no
+    # previous URL was stored in the session (i.e. no resource was requested).
+    # This is similar to the behaviour of
+    # [using the referring URL for form login](http://symfony.com/doc/2.0/cookbook/security/form_login.html#using-the-referring-url).
+    # use_referer: true
+
+    # here you will add one (or more) configurations for resource owners
+    resource_owners:
+            wmf:
+                type:                oauth2
+                client_id:           "%oauth_id%"
+                client_secret:       "%oauth_secret%"
+                access_token_url:    https://deployment.wikimedia.beta.wmflabs.org/w/index.php?title=Special:OAuth/token
+                authorization_url:   https://deployment.wikimedia.beta.wmflabs.org/w/index.php?title=Special:OAuth/authorize
+                infos_url:           https://deployment.wikimedia.beta.wmflabs.org/w/index.php?title=Special:OAuth/user
+                scope:               "read"
+                user_response_class: HWI\Bundle\OAuthBundle\OAuth\Response\PathUserResponse
+                paths:
+                    identifier: id
+                    nickname:   username
+                    realname:   fullname
