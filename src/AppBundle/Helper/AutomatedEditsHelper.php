@@ -9,11 +9,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\VarDumper\VarDumper;
 
-class AutomatedEditsHelper
+class AutomatedEditsHelper extends HelperBase
 {
-
-    /** @var ContainerInterface */
-    private $container;
 
     /** @var string[] The list of tools that are considered reverting. */
     public $revertTools = [
@@ -111,12 +108,9 @@ class AutomatedEditsHelper
      */
     public function getEditsSummary($userId)
     {
-        // Set up cache.
-        /** @var CacheItemPoolInterface $cache */
-        $cache = $this->container->get('cache.app');
-        $cacheItem = $cache->getItem('automatedEdits.'.$userId);
-        if ($cacheItem->isHit()) {
-            return $cacheItem->get();
+        $cacheKey = "automatedEdits.$userId";
+        if ($this->cacheHas($cacheKey)) {
+            return $this->cacheGet($cacheKey);
         }
 
         // Get the most recent 1000 edit summaries.
@@ -143,10 +137,7 @@ class AutomatedEditsHelper
         arsort($out);
 
         // Cache for 10 minutes.
-        $cacheItem->expiresAfter(new \DateInterval('PT10M'));
-        $cacheItem->set($out);
-        $cache->save($cacheItem);
-
+        $this->cacheSave($cacheKey, $out, 'PT10M');
         return $out;
     }
 }

@@ -35,12 +35,20 @@ class EditCounterHelper extends HelperBase
      */
     public function getUserId($usernameOrIp)
     {
+        $this->debug("Getting ID of $usernameOrIp");
+        $cacheKey = 'userid.' . $usernameOrIp;
+        if ($this->cacheHas($cacheKey)) {
+            return $this->cacheGet($cacheKey);
+        }
         $userTable = $this->labsHelper->getTable('user');
         $sql = "SELECT user_id FROM $userTable WHERE user_name = :username LIMIT 1";
         $resultQuery = $this->replicas->prepare($sql);
         $resultQuery->bindParam("username", $usernameOrIp);
         $resultQuery->execute();
         $userId = (int)$resultQuery->fetchColumn();
+
+        // Save to cache for 1 week.
+        $this->cacheSave($cacheKey, $userId, 'P7D');
         return $userId;
     }
 
@@ -49,30 +57,46 @@ class EditCounterHelper extends HelperBase
      * @param string $username The username.
      * @return string[] Elements are arrays with 'dbName', 'url', 'name', and 'total'.
      */
-    public function getTopProjectsEditCounts($username, $numProjects = 10)
+    public function getTopProjectsEditCounts($projectUrl, $username, $numProjects = 10)
     {
-        $topEditCounts = [];
-        foreach ($this->labsHelper->allProjects() as $project) {
-            // Get total edit count from DB otherwise.
-            $revisionTableName = $this->labsHelper->getTable('revision', $project['dbName']);
-            $sql = "SELECT COUNT(rev_id) FROM $revisionTableName WHERE rev_user_text=:username";
-            $stmt = $this->replicas->prepare($sql);
-            $stmt->bindParam("username", $username);
-            $stmt->execute();
-            $total = (int)$stmt->fetchColumn();
-            $topEditCounts[$project['dbName']] = array_merge($project, ['total' => $total]);
+        $this->debug("Getting top project edit counts for $username");
+        $cacheKey = 'topprojectseditcounts.' . $username;
+        if ($this->cacheHas($cacheKey)) {
+            return $this->cacheGet($cacheKey);
+        }
+
+        // First try to get the edit count from the API (if CentralAuth is installed).
+        /** @var ApiHelper */
+        $api = $this->container->get('app.api_helper');
+        $topEditCounts = $api->getEditCount($username, $projectUrl);
+        if (false === $topEditCounts) {
+            // If no CentralAuth, fall back to querying each database in turn.
+            foreach ($this->labsHelper->getProjectsInfo() as $project) {
+                $this->container->get('logger')->debug('Getting edit count for ' . $project['url']);
+                $revisionTableName = $this->labsHelper->getTable('revision', $project['dbName']);
+                $sql = "SELECT COUNT(rev_id) FROM $revisionTableName WHERE rev_user_text=:username";
+                $stmt = $this->replicas->prepare($sql);
+                $stmt->bindParam("username", $username);
+                $stmt->execute();
+                $total = (int)$stmt->fetchColumn();
+                $topEditCounts[$project['dbName']] = array_merge($project, ['total' => $total]);
+            }
         }
         uasort($topEditCounts, function ($a, $b) {
             return $b['total'] - $a['total'];
         });
-        return array_slice($topEditCounts, 0, $numProjects);
+        $out = array_slice($topEditCounts, 0, $numProjects);
+
+        // Cache for ten minutes.
+        $this->cacheSave($cacheKey, $out, 'PT10M');
+        return $out;
     }
 
     /**
      * Get revision counts for the given user.
      * @param integer $userId The user's ID.
-     * @returns string[] With keys: 'archived', 'total', 'first', 'last', '24h', '7d', '30d', and
-     * '365d'.
+     * @returns string[] With keys: 'deleted', 'live', 'total', 'first', 'last', '24h', '7d', '30d',
+     * '365d', 'small', 'large', 'with_comments', and 'minor_edits'.
      * @throws Exception
      */
     public function getRevisionCounts($userId)
@@ -83,76 +107,56 @@ class EditCounterHelper extends HelperBase
             return $this->cacheGet($cacheKey);
         }
 
-        // Prepare the query and execute
+        // Prepare the queries and execute them.
         $archiveTable = $this->labsHelper->getTable('archive');
         $revisionTable = $this->labsHelper->getTable('revision');
-        $resultQuery = $this->replicas->prepare("
-            (SELECT 'deleted' as source, COUNT(ar_id) AS value FROM $archiveTable
-                WHERE ar_user = :userId)
-            UNION
-            (SELECT 'live' as source, COUNT(rev_id) AS value FROM $revisionTable
-                WHERE rev_user = :userId)
-            UNION
-            (SELECT 'first' as source, rev_timestamp FROM $revisionTable
-                WHERE rev_user = :userId ORDER BY rev_timestamp ASC LIMIT 1)
-            UNION
-            (SELECT 'last' as source, rev_timestamp FROM $revisionTable
-                WHERE rev_user = :userId ORDER BY rev_timestamp DESC LIMIT 1)
-            UNION
-            (SELECT '24h' as source, COUNT(rev_id) as value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 24 HOUR))
-            UNION
-            (SELECT '7d' as source, COUNT(rev_id) as value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 7 DAY))
-            UNION
-            (SELECT '30d' as source, COUNT(rev_id) as value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 30 DAY))
-            UNION
-            (SELECT '365d' as source, COUNT(rev_id) as value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 365 DAY))
-            UNION
-            (SELECT 'small' AS source, COUNT(rev_id) AS value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_len < 20)
-            UNION
-            (SELECT 'large' AS source, COUNT(rev_id) AS value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_len > 1000)
-            UNION
-            (SELECT 'with_comments' AS source, COUNT(rev_id) AS value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_comment = '')
-            UNION
-            (SELECT 'minor_edits' AS source, COUNT(rev_id) AS value FROM $revisionTable
-                WHERE rev_user = :userId AND rev_minor_edit = 1)
-            ");
-        $resultQuery->bindParam("userId", $userId);
-        $resultQuery->execute();
-        $results = $resultQuery->fetchAll();
-
-        // Unknown user - This is a dirty hack that should be fixed.
-        if (count($results) < 8) {
-            throw new Exception("Unable to get all revision counts for user $userId");
+        $queries = [
+            'deleted' => "SELECT COUNT(ar_id) FROM $archiveTable
+                WHERE ar_user = :userId",
+            'live' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId",
+            'first' => "SELECT rev_timestamp FROM $revisionTable
+                WHERE rev_user = :userId ORDER BY rev_timestamp ASC LIMIT 1",
+            'last' => "SELECT rev_timestamp FROM $revisionTable
+                WHERE rev_user = :userId ORDER BY rev_timestamp DESC LIMIT 1",
+            '24h' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 24 HOUR)",
+            '7d' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 7 DAY)",
+            '30d' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 30 DAY)",
+            '365d' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_timestamp >= DATE_SUB(NOW(),INTERVAL 365 DAY)",
+            'small' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_len < 20",
+            'large' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_len > 1000",
+            'with_comments' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_comment = ''",
+            'minor_edits' => "SELECT COUNT(rev_id) FROM $revisionTable
+                WHERE rev_user = :userId AND rev_minor_edit = 1",
+        ];
+        $revisionCounts = [];
+        foreach ($queries as $varName => $query) {
+            $resultQuery = $this->replicas->prepare($query);
+            $resultQuery->bindParam("userId", $userId);
+            $resultQuery->execute();
+            $val = $resultQuery->fetchColumn();
+            $revisionCounts[$varName] = $val ?: 0;
         }
-
-        $revisionCounts = array_combine(
-            array_map(function ($e) {
-                return $e['source'];
-            }, $results),
-            array_map(function ($e) {
-                return $e['value'];
-            }, $results)
-        );
 
         // Count the number of days, accounting for when there's zero or one edit.
         $revisionCounts['days'] = 0;
-        if (isset($revisionCounts['first']) && isset($revisionCounts['last'])) {
-            $editingTimeInSeconds = ceil($revisionCounts['last'] - $revisionCounts['first']);
+        if ($revisionCounts['first'] && $revisionCounts['last']) {
+            $editingTimeInSeconds = strtotime($revisionCounts['last']) - strtotime($revisionCounts['first']);
             $revisionCounts['days'] = $editingTimeInSeconds ? $editingTimeInSeconds/(60*60*24) : 1;
         }
 
         // Format the first and last dates.
-        $revisionCounts['first'] = isset($revisionCounts['first'])
+        $revisionCounts['first'] = $revisionCounts['first']
             ? date('Y-m-d H:i', strtotime($revisionCounts['first']))
             : 0;
-        $revisionCounts['last'] = isset($revisionCounts['last'])
+        $revisionCounts['last'] = $revisionCounts['last']
             ? date('Y-m-d H:i', strtotime($revisionCounts['last']))
             : 0;
 
@@ -160,10 +164,13 @@ class EditCounterHelper extends HelperBase
         $revisionCounts['total'] = $revisionCounts['deleted'] + $revisionCounts['live'];
 
         // Calculate the average number of live edits per day.
-        $revisionCounts['avg_per_day'] = round(
-            $revisionCounts['live'] / $revisionCounts['days'],
-            3
-        );
+        $revisionCounts['avg_per_day'] = 0;
+        if ($revisionCounts['days']) {
+            $revisionCounts['avg_per_day'] = round(
+                $revisionCounts['live'] / $revisionCounts['days'],
+                3
+            );
+        }
 
         // Cache for 10 minutes, and return.
         $this->cacheSave($cacheKey, $revisionCounts, 'PT10M');
@@ -177,6 +184,11 @@ class EditCounterHelper extends HelperBase
      */
     public function getPageCounts($username, $totalRevisions)
     {
+        $cacheKey = "pagecounts.$username";
+        if ($this->cacheHas($cacheKey)) {
+            return $this->cacheGet($cacheKey);
+        }
+
         $resultQuery = $this->replicas->prepare("
             SELECT 'unique' as source, COUNT(distinct rev_page) as value
                 FROM ".$this->labsHelper->getTable('revision')." where rev_user_text=:username
@@ -213,6 +225,8 @@ class EditCounterHelper extends HelperBase
             $pageCounts['edits_per_page'] = round($totalRevisions / $pageCounts['unique'], 3);
         }
 
+        // Cache for 10 minutes.
+        $this->cacheSave($cacheKey, $pageCounts, 'PT10M');
         return $pageCounts;
     }
 
@@ -274,11 +288,12 @@ class EditCounterHelper extends HelperBase
 
     /**
      * Get the given user's total edit counts per namespace.
-     * @param integer $userId The ID of the user.
+     * @param string $username The username of the user.
      * @return integer[] Array keys are namespace IDs, values are the edit counts.
      */
-    public function getNamespaceTotals($userId)
+    public function getNamespaceTotals($username)
     {
+        $userId = $this->getUserId($username);
         $sql = "SELECT page_namespace, count(rev_id) AS total
             FROM ".$this->labsHelper->getTable('revision') ." r
                 JOIN ".$this->labsHelper->getTable('page')." p on r.rev_page = p.page_id
@@ -301,21 +316,22 @@ class EditCounterHelper extends HelperBase
     /**
      * Get this user's most recent 10 edits across all projects.
      * @param string $username The username.
-     * @param integer $contribCount The number of items to return.
+     * @param integer $topN The number of items to return.
      * @param integer $days The number of days to search from each wiki.
      * @return string[]
      */
-    public function getRecentGlobalContribs($username, $contribCount = 10, $days = 30)
+    public function getRecentGlobalContribs($username, $projects = [], $topN = 10, $days = 30)
     {
         $allRevisions = [];
-        foreach ($this->labsHelper->allProjects() as $project) {
+        foreach ($this->labsHelper->getProjectsInfo($projects) as $project) {
             $cacheKey = "globalcontribs.{$project['dbName']}.$username";
             if ($this->cacheHas($cacheKey)) {
                 $revisions = $this->cacheGet($cacheKey);
             } else {
                 $sql =
-                    "SELECT rev_id, rev_comment, rev_timestamp, rev_minor_edit, rev_deleted, "
-                    . "     rev_len, rev_parent_id, page_title "
+                    "SELECT rev_id, rev_timestamp, UNIX_TIMESTAMP(rev_timestamp) AS unix_timestamp, "
+                    . " rev_minor_edit, rev_deleted, rev_len, rev_parent_id, rev_comment, "
+                    . " page_title, page_namespace "
                     . " FROM " . $this->labsHelper->getTable('revision', $project['dbName'])
                     . "    JOIN " . $this->labsHelper->getTable('page', $project['dbName'])
                     . "    ON (rev_page = page_id)"
@@ -333,9 +349,10 @@ class EditCounterHelper extends HelperBase
             }
             $revsWithProject = array_map(
                 function (&$item) use ($project) {
-                    $item['project_name'] = $project['name'];
+                    $item['project_name'] = $project['wikiName'];
                     $item['project_url'] = $project['url'];
                     $item['project_db_name'] = $project['dbName'];
+                    $item['rev_time_formatted'] = date('Y-m-d H:i', $item['unix_timestamp']);
                     return $item;
                 },
                 $revisions
@@ -345,7 +362,7 @@ class EditCounterHelper extends HelperBase
         usort($allRevisions, function ($a, $b) {
             return $b['rev_timestamp'] - $a['rev_timestamp'];
         });
-        return array_slice($allRevisions, 0, $contribCount);
+        return array_slice($allRevisions, 0, $topN);
     }
 
     /**
@@ -411,7 +428,7 @@ class EditCounterHelper extends HelperBase
      * @param string $username
      * @return string[] ['<namespace>' => ['<year>' => 'total', ... ], ... ]
      */
-    public function getYearlyTotalsByNamespace($username)
+    public function getYearCounts($username)
     {
         $cacheKey = "yearcounts.$username";
         if ($this->cacheHas($cacheKey)) {

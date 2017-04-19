@@ -520,4 +520,45 @@ class ApiHelper extends HelperBase
             }
         });
     }
+
+    /**
+     * Get a user's total edit count on one or more project.
+     * Requires the CentralAuth extension to be installed on the project.
+     *
+     * @param string $username The username.
+     * @param string $projectUrl The project's URL, if not used all projects will be returned.
+     * @return mixed[]|boolean Array of total edit counts, or false if none could be found.
+     */
+    public function getEditCount($username, $projectUrl)
+    {
+        // This creates its own API object because self::setUp
+        // calls LabsHelper::databasePrepare() and we've already got that info.
+        if ($this->labsHelper->isLabs()) {
+            // @TODO This assumes too much. Can be removed after T163527.
+            $projectUrl = $projectUrl . '/w/api.php';
+            $api = MediawikiApi::newFromApiEndpoint($projectUrl);
+        } else {
+            $api = MediawikiApi::newFromPage($projectUrl);
+        }
+        $params = [
+            'meta' => 'globaluserinfo',
+            'guiprop' => 'editcount|merged',
+            'guiuser' => $username,
+        ];
+        $query = new SimpleRequest('query', $params);
+        $result = $api->getRequest($query);
+        if (!isset($result['query']['globaluserinfo']['merged'])) {
+            return false;
+        }
+        $out = [];
+        foreach ($result['query']['globaluserinfo']['merged'] as $merged) {
+            // The array structure here should match what's done in
+            // EditCounterHelper::getTopProjectsEditCounts()
+            $out[$merged['wiki']] = [
+                'total' => $merged['editcount'],
+            ];
+        }
+        $projectsInfo = $this->labsHelper->getProjectsInfo(array_keys($out));
+        return array_merge_recursive($projectsInfo, $out);
+    }
 }

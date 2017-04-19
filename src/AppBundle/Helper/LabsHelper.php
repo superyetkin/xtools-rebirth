@@ -5,9 +5,8 @@ namespace AppBundle\Helper;
 use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\VarDumper\VarDumper;
 
-class LabsHelper
+class LabsHelper extends HelperBase
 {
     /** @var string */
     protected $dbName;
@@ -20,6 +19,9 @@ class LabsHelper
 
     /** @var string */
     protected $url;
+
+    /** @var mixed[] Store DB info in case of re-requesting within the same run. */
+    protected $dbInfo = [];
 
     public function __construct(ContainerInterface $container)
     {
@@ -50,6 +52,9 @@ class LabsHelper
      */
     public function databasePrepare($project = 'wiki')
     {
+        if (isset($this->dbInfo[$project])) {
+            return $this->dbInfo[$project];
+        }
         if ($this->container->getParameter('app.single_wiki')) {
             $dbName = $this->container->getParameter('database_replica_name');
             $wikiName = 'wiki';
@@ -107,18 +112,37 @@ class LabsHelper
         $this->dbName = $dbName;
         $this->url = $url;
 
-        return [ 'dbName' => $dbName, 'wikiName' => $wikiName, 'url' => $url, 'lang' => $lang ];
+        $dbInfo = [ 'dbName' => $dbName, 'wikiName' => $wikiName, 'url' => $url, 'lang' => $lang ];
+        $this->dbInfo[$project] = $dbInfo;
+        return $dbInfo;
     }
 
     /**
-     * Get a list of all projects.
+     * Get project information.
+     * @param string[] $projectNames Leave empty to get all projects.
+     * @return array[] Each element has 'dbName', 'wikiName', 'url', and 'lang' elements.
      */
-    public function allProjects()
+    public function getProjectsInfo($projectNames = [])
     {
         $wikiQuery = $this->client->createQueryBuilder();
-        $wikiQuery->select([ 'dbName', 'name', 'url' ])->from('wiki');
+        $wikiQuery->select([ 'dbName', 'name', 'url', 'lang' ])->from('wiki');
+        if ($projectNames) {
+            $wikiQuery->andWhere('dbName IN (:' . join(', :', $projectNames) . ')');
+        }
+        foreach ($projectNames as $projectName) {
+            $wikiQuery->setParameter(":$projectName", $projectName);
+        }
         $stmt = $wikiQuery->execute();
-        $out = $stmt->fetchAll();
+        $out = [];
+        foreach ($stmt->fetchAll() as $wiki) {
+            $out[$wiki['dbName']] = [
+                'dbName' => $wiki['dbName'],
+                'wikiName' => $wiki['name'],
+                'url' => $wiki['url'],
+                'lang' => $wiki['lang'],
+            ];
+        }
+        $this->debug("Projects found: ", $out);
         return $out;
     }
 
